@@ -4,6 +4,285 @@ import { Physics, RigidBody, useRapier, CapsuleCollider } from '@react-three/rap
 import { useRef, useEffect, useState, useMemo } from 'react'
 import * as THREE from 'three'
 
+// --- SNOWFLAKE TRANSITION COMPONENT (Using your image) ---
+function SnowflakeTransition({ onComplete, snowflakeImageUrl = '/flakesanthisim-removebg-preview.png' }) {
+  const [snowflakes, setSnowflakes] = useState([])
+  const [opacity, setOpacity] = useState(1)
+  const startTimeRef = useRef(Date.now())
+  
+  // Initialize snowflakes once
+  useEffect(() => {
+    const initialFlakes = []
+    for (let i = 0; i < 80; i++) {
+      initialFlakes.push({
+        id: i,
+        startX: Math.random() * 100,
+        startY: -5 - Math.random() * 30, // Start above the screen
+        size: 40 + Math.random() * 60,
+        speed: 80 + Math.random() * 120,
+        startRotation: Math.random() * 360,
+        rotationSpeed: (Math.random() - 0.5) * 120,
+        wobbleSpeed: 0.5 + Math.random() * 1.5,
+        wobbleAmount: 10 + Math.random() * 20,
+        delay: Math.random() * 400,
+        flakeOpacity: 0.7 + Math.random() * 0.3
+      })
+    }
+    setSnowflakes(initialFlakes)
+    startTimeRef.current = Date.now()
+  }, [])
+  
+  // Animation using requestAnimationFrame
+  useEffect(() => {
+    if (snowflakes.length === 0) return
+    
+    let animationFrame
+    
+    const animate = () => {
+      const elapsed = Date.now() - startTimeRef.current
+      
+      // Update snowflake positions
+      setSnowflakes(prev => prev.map(flake => {
+        const activeTime = Math.max(0, elapsed - flake.delay)
+        const currentY = flake.startY + (flake.speed * activeTime) / 1000
+        const currentX = flake.startX + Math.sin(activeTime / 1000 * flake.wobbleSpeed) * flake.wobbleAmount
+        const currentRotation = flake.startRotation + (flake.rotationSpeed * activeTime) / 1000
+        
+        return {
+          ...flake,
+          currentY,
+          currentX,
+          currentRotation
+        }
+      }))
+      
+      // Start fading out after 2.5 seconds
+      if (elapsed > 2500) {
+        setOpacity(Math.max(0, 1 - (elapsed - 2500) / 800))
+      }
+      
+      // Complete transition after 3.3 seconds
+      if (elapsed > 3300) {
+        onComplete()
+        return
+      }
+      
+      animationFrame = requestAnimationFrame(animate)
+    }
+    
+    animationFrame = requestAnimationFrame(animate)
+    
+    return () => {
+      if (animationFrame) cancelAnimationFrame(animationFrame)
+    }
+  }, [snowflakes.length, onComplete])
+  
+  return (
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      background: 'linear-gradient(180deg, #0d1b2a 0%, #1b3a4b 40%, #2d5a87 100%)',
+      zIndex: 3000,
+      overflow: 'hidden',
+      opacity: opacity,
+      transition: 'opacity 0.4s ease-out',
+      pointerEvents: opacity > 0 ? 'all' : 'none'
+    }}>
+      {/* Snowflakes */}
+      {snowflakes.map(flake => (
+        <img
+          key={flake.id}
+          src={snowflakeImageUrl}
+          alt=""
+          style={{
+            position: 'absolute',
+            left: `${flake.currentX ?? flake.startX}%`,
+            top: `${flake.currentY ?? flake.startY}%`,
+            width: flake.size,
+            height: flake.size,
+            transform: `translate(-50%, -50%) rotate(${flake.currentRotation ?? flake.startRotation}deg)`,
+            opacity: flake.flakeOpacity,
+            filter: 'drop-shadow(0 0 8px rgba(255, 255, 255, 0.6))',
+            pointerEvents: 'none',
+            willChange: 'transform, top, left'
+          }}
+          onError={(e) => {
+            // Fallback to SVG if image doesn't load
+            e.target.style.display = 'none'
+          }}
+        />
+      ))}
+      
+      {/* SVG Fallback snowflakes (in case image doesn't load) */}
+      {snowflakes.map(flake => (
+        <div
+          key={`svg-${flake.id}`}
+          style={{
+            position: 'absolute',
+            left: `${flake.currentX ?? flake.startX}%`,
+            top: `${flake.currentY ?? flake.startY}%`,
+            width: flake.size,
+            height: flake.size,
+            transform: `translate(-50%, -50%) rotate(${flake.currentRotation ?? flake.startRotation}deg)`,
+            opacity: flake.flakeOpacity,
+            pointerEvents: 'none',
+            willChange: 'transform, top, left'
+          }}
+        >
+          <svg viewBox="0 0 100 100" style={{ width: '100%', height: '100%' }}>
+            <g fill="white" stroke="#b3e5fc" strokeWidth="0.5" opacity="0.9">
+              <rect x="48" y="5" width="4" height="90" rx="2" />
+              <rect x="5" y="48" width="90" height="4" rx="2" />
+              <rect x="48" y="5" width="4" height="90" rx="2" transform="rotate(60 50 50)" />
+              <rect x="48" y="5" width="4" height="90" rx="2" transform="rotate(-60 50 50)" />
+              <circle cx="50" cy="50" r="8" />
+              {[0, 60, 120, 180, 240, 300].map((angle, i) => (
+                <g key={i} transform={`rotate(${angle} 50 50)`}>
+                  <circle cx="50" cy="20" r="4" />
+                  <circle cx="50" cy="80" r="4" />
+                </g>
+              ))}
+            </g>
+          </svg>
+        </div>
+      ))}
+      
+      {/* Title that appears during snowfall */}
+      <div style={{
+        position: 'absolute',
+        top: '50%',
+        left: '50%',
+        transform: 'translate(-50%, -50%)',
+        textAlign: 'center',
+        zIndex: 10
+      }}>
+        <div style={{
+          color: 'white',
+          fontSize: '5rem',
+          fontFamily: "'Fredoka One', cursive",
+          textShadow: '0 0 40px rgba(100, 200, 255, 0.9), 0 0 80px rgba(100, 200, 255, 0.5), 0 4px 20px rgba(0,0,0,0.5)',
+          letterSpacing: '4px',
+          animation: 'titlePulse 2s ease-in-out infinite'
+        }}>
+          Snow Quest
+        </div>
+        <style>{`
+          @keyframes titlePulse {
+            0%, 100% { 
+              transform: scale(1);
+              text-shadow: 0 0 40px rgba(100, 200, 255, 0.9), 0 0 80px rgba(100, 200, 255, 0.5), 0 4px 20px rgba(0,0,0,0.5);
+            }
+            50% { 
+              transform: scale(1.02);
+              text-shadow: 0 0 60px rgba(100, 200, 255, 1), 0 0 100px rgba(100, 200, 255, 0.7), 0 4px 20px rgba(0,0,0,0.5);
+            }
+          }
+        `}</style>
+      </div>
+    </div>
+  )
+}
+
+// --- START PAGE COMPONENT ---
+function StartPage({ onStart }) {
+  return (
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      background: 'linear-gradient(135deg, rgba(0, 0, 0, 0.7) 0%, rgba(0, 0, 0, 0.85) 100%)',
+      backdropFilter: 'blur(10px)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 2000,
+      animation: 'fadeIn 0.8s ease-out'
+    }}>
+      <style>{`
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes slideDown {
+          from {
+            opacity: 0;
+            transform: translateY(-30px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        @keyframes pulse {
+          0%, 100% {
+            box-shadow: 0 8px 30px rgba(22, 191, 197, 0.3);
+          }
+          50% {
+            box-shadow: 0 8px 40px rgba(36, 170, 190, 0.4);
+          }
+        }
+      `}</style>
+      
+      <div style={{
+        textAlign: 'center',
+        padding: '40px',
+        position: 'relative',
+        zIndex: 2
+      }}>
+        <h1 style={{
+          fontSize: '6rem',
+          fontWeight: '1200',
+          fontFamily: "'Fredoka One', cursive",
+          color: 'white',
+          marginBottom: '20px',
+          textShadow: '0 4px 20px rgba(0, 0, 0, 0.5)',
+          letterSpacing: '2px',
+          animation: 'slideDown 0.8s ease-out 0.2s both'
+        }}>
+          Snow Quest
+        </h1>
+        
+        <button 
+          onClick={onStart}
+          style={{
+            position: 'relative',
+            background: 'linear-gradient(145deg,rgb(51, 238, 255),rgb(0, 143, 204))',
+            border: 'none',
+            borderRadius: '50px',
+            color: 'white',
+            padding: '24px 60px',
+            fontSize: '1.8rem',
+            fontWeight: '700',
+            letterSpacing: '2px',
+            textTransform: 'uppercase',
+            cursor: 'pointer',
+            transition: 'all 0.3s ease',
+            overflow: 'hidden',
+            boxShadow: '0 8px 30px rgba(22, 191, 197, 0.3)',
+            animation: 'pulse 2s infinite',
+            minWidth: '250px'
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'translateY(-4px)'
+            e.currentTarget.style.boxShadow = '0 12px 40px rgba(22, 191, 197, 0.5)'
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'translateY(0)'
+            e.currentTarget.style.boxShadow = '0 8px 30px rgba(22, 191, 197, 0.3)'
+          }}
+        >
+          START
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // --- SNOW COMPONENT ---
 function Snow({ count = 3000 }) {
   const { positions, velocities } = useMemo(() => {
@@ -47,23 +326,20 @@ function Snow({ count = 3000 }) {
   )
 }
 
-// --- PLAYER BODY MESH (Visible Collision Object) ---
+// --- PLAYER BODY MESH ---
 function PlayerBody() {
   return (
     <group>
-      {/* Body - Capsule shape made of cylinder + spheres */}
       <mesh position={[0, 0, 0]}>
         <capsuleGeometry args={[0.5, 1.5, 8, 16]} />
         <meshStandardMaterial 
           color="#4488ff" 
-          
           opacity={1}
           metalness={0.3}
           roughness={0.5}
         />
       </mesh>
       
-      {/* Head - Sphere on top */}
       <mesh position={[0, 1.5, 0]}>
         <sphereGeometry args={[0.35, 16, 16]} />
         <meshStandardMaterial 
@@ -73,7 +349,6 @@ function PlayerBody() {
         />
       </mesh>
       
-      {/* Eyes */}
       <mesh position={[0.12, 1.5, 0.28]}>
         <sphereGeometry args={[0.08, 8, 8]} />
         <meshStandardMaterial color="#222222" />
@@ -88,10 +363,9 @@ function PlayerBody() {
 
 function Player() {
   const playerRef = useRef()
-  const bodyRef = useRef() // Reference to the visible body mesh
+  const bodyRef = useRef()
   const { rapier, world } = useRapier()
   
-  // Vectors
   const moveDirection = new THREE.Vector3()
   const frontVector = new THREE.Vector3()
   const sideVector = new THREE.Vector3()
@@ -105,7 +379,6 @@ function Player() {
     const down = (e) => {
       keys.current[e.code] = true
       if (e.code === 'Space') jumpRequested.current = true
-      // Toggle view with V key
       if (e.code === 'KeyV') setThirdPerson(prev => !prev)
     }
     const up = (e) => {
@@ -123,14 +396,12 @@ function Player() {
   useFrame((state) => {
     if (!playerRef.current) return
 
-    // --- 1. Ground Check ---
     const position = playerRef.current.translation()
     const rayOrigin = { x: position.x, y: position.y - 1.25, z: position.z }
     const ray = new rapier.Ray(rayOrigin, { x: 0, y: -1, z: 0 })
     const hit = world.castRay(ray, 0.5, true, null, null, playerRef.current)
     isGrounded.current = !!hit
 
-    // --- 2. Jump ---
     if (jumpRequested.current && isGrounded.current) {
        playerRef.current.setLinvel({ 
         x: playerRef.current.linvel().x, 
@@ -140,7 +411,6 @@ function Player() {
       jumpRequested.current = false
     }
 
-    // --- 3. Movement ---
     state.camera.getWorldDirection(frontVector)
     frontVector.y = 0 
     frontVector.normalize() 
@@ -167,15 +437,13 @@ function Player() {
       true
     )
     
-    // --- 4. Update Camera ---
     const playerPos = playerRef.current.translation()
     
     if (thirdPerson) {
-      // Third Person: Camera behind and above the player
       const cameraOffset = new THREE.Vector3()
       state.camera.getWorldDirection(cameraOffset)
-      cameraOffset.multiplyScalar(-5) // 5 units behind
-      cameraOffset.y = 3 // 3 units above
+      cameraOffset.multiplyScalar(-5)
+      cameraOffset.y = 3
       
       state.camera.position.set(
         playerPos.x + cameraOffset.x,
@@ -184,11 +452,9 @@ function Player() {
       )
       state.camera.lookAt(playerPos.x, playerPos.y + 1, playerPos.z)
     } else {
-      // First Person: Camera at head level
       state.camera.position.set(playerPos.x, playerPos.y + 1.0, playerPos.z)
     }
 
-    // --- 5. Rotate Player Body to face movement direction ---
     if (bodyRef.current && moveDirection.length() > 0) {
       const angle = Math.atan2(moveDirection.x, moveDirection.z)
       bodyRef.current.rotation.y = angle
@@ -204,13 +470,9 @@ function Player() {
       enabledRotations={[false, false, false]}
       lockRotations
       friction={0}
-      
       ccd={true}
     >
-      {/* Physics Collider */}
       <CapsuleCollider args={[0.75, 0.5]} />
-      
-      {/* Visible Player Body - This follows the camera/physics body */}
       <group ref={bodyRef}>
         <PlayerBody />
       </group>
@@ -249,14 +511,54 @@ useGLTF.preload('/models/vilage.glb')
 
 export default function App() {
   const [loaded, setLoaded] = useState(false)
+  const [gameStarted, setGameStarted] = useState(false)
+  const [showTransition, setShowTransition] = useState(false)
+  const [showGame, setShowGame] = useState(false)
+  
+  const handleStartGame = () => {
+    setGameStarted(true)
+    setShowTransition(true)
+  }
+  
+  const handleTransitionComplete = () => {
+    setShowTransition(false)
+    setShowGame(true)
+  }
+  
+  const handleExitToMenu = () => {
+    setGameStarted(false)
+    setShowTransition(false)
+    setShowGame(false)
+  }
   
   return (
     <div style={{ width: '100vw', height: '100vh', margin: 0, padding: 0, background: '#aaccff' }}>
+      {/* Start Page - Only show if game hasn't started */}
+      {!gameStarted && <StartPage onStart={handleStartGame} />}
+      
+      {/* Snowflake Transition Animation - Falls immediately when START is pressed */}
+      {showTransition && (
+        <SnowflakeTransition 
+          onComplete={handleTransitionComplete} 
+          snowflakeImageUrl="/flakesanthisim-removebg-preview.png"
+        />
+      )}
+      
+      {/* 3D Game Canvas */}
       <Canvas
         shadows
         camera={{ fov: 75 }}
-        onPointerDown={(e) => e.target.requestPointerLock()}
+        onPointerDown={(e) => {
+          if (showGame) {
+            e.target.requestPointerLock()
+          }
+        }}
         onCreated={() => setLoaded(true)}
+        style={{ 
+          display: showGame ? 'block' : 'none',
+          opacity: showGame ? 1 : 0,
+          transition: 'opacity 0.5s ease-in'
+        }}
       >
         <Environment preset="park" />
         <fog attach="fog" args={['#aaccff', 5, 60]} />
@@ -288,24 +590,49 @@ export default function App() {
         )}
       </Canvas>
       
-      <div style={{
-        position: 'absolute',
-        top: 10,
-        left: 10,
-        color: 'white',
-        backgroundColor: 'rgba(0,0,0,0.7)',
-        padding: '15px',
-        borderRadius: '8px',
-        fontFamily: 'monospace',
-        fontSize: '14px',
-        lineHeight: '1.6'
-      }}>
-        <div><b>Controls:</b></div>
-        <div>WASD - Move</div>
-        <div>SPACE - Jump</div>
-        <div>SHIFT - Run</div>
-        <div>V - Toggle View (1st/3rd Person)</div>
-      </div>
+      {/* Controls Info */}
+      {showGame && (
+        <div style={{
+          position: 'absolute',
+          top: 10,
+          left: 10,
+          color: 'white',
+          backgroundColor: 'rgba(0,0,0,0.7)',
+          padding: '15px',
+          borderRadius: '8px',
+          fontFamily: 'monospace',
+          fontSize: '14px',
+          lineHeight: '1.6'
+        }}>
+          <div><b>Controls:</b></div>
+          <div>WASD - Move</div>
+          <div>SPACE - Jump</div>
+          <div>SHIFT - Run</div>
+          <div>V - Toggle View (1st/3rd Person)</div>
+        </div>
+      )}
+      
+      {/* Exit Button */}
+      {showGame && (
+        <button 
+          onClick={handleExitToMenu}
+          style={{
+            position: 'absolute',
+            top: 10,
+            right: 10,
+            background: 'rgba(22, 230, 237, 0.7)',
+            color: 'white',
+            border: 'none',
+            padding: '10px 20px',
+            borderRadius: '5px',
+            cursor: 'pointer',
+            fontFamily: 'monospace',
+            fontSize: '14px'
+          }}
+        >
+          Exit to Menu
+        </button>
+      )}
     </div>
   )
 }
