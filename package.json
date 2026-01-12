@@ -1,5 +1,6 @@
 {
   "dependencies": {
-    "ecctrl": "^1.0.97"
+    "ecctrl": "^1.0.97",
+    "gsap": "^3.14.2"
   }
 }

@@ -56,15 +56,15 @@ function PlayerBody() {
         <capsuleGeometry args={[0.5, 1.5, 8, 16]} />
         <meshStandardMaterial 
           color="#4488ff" 
-          transparent 
-          opacity={0.7}
+          
+          opacity={1}
           metalness={0.3}
           roughness={0.5}
         />
       </mesh>
       
       {/* Head - Sphere on top */}
-      <mesh position={[0, 1.2, 0]}>
+      <mesh position={[0, 1.5, 0]}>
         <sphereGeometry args={[0.35, 16, 16]} />
         <meshStandardMaterial 
           color="#ffcc88" 
@@ -74,11 +74,11 @@ function PlayerBody() {
       </mesh>
       
       {/* Eyes */}
-      <mesh position={[0.12, 1.3, 0.28]}>
+      <mesh position={[0.12, 1.5, 0.28]}>
         <sphereGeometry args={[0.08, 8, 8]} />
         <meshStandardMaterial color="#222222" />
       </mesh>
-      <mesh position={[-0.12, 1.3, 0.28]}>
+      <mesh position={[-0.12, 1.5, 0.28]}>
         <sphereGeometry args={[0.08, 8, 8]} />
         <meshStandardMaterial color="#222222" />
       </mesh>
@@ -200,10 +200,11 @@ function Player() {
       ref={playerRef}
       colliders={false}
       mass={1}
-      position={[10, 5, 0]}
+      position={[10, 6, 0]}
       enabledRotations={[false, false, false]}
       lockRotations
       friction={0}
+      
       ccd={true}
     >
       {/* Physics Collider */}

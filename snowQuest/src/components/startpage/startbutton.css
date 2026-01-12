@@ -1,0 +1,164 @@
+/* components/StartButton/StartButton.css */
+.start-button {
+    position: relative;
+    background: linear-gradient(145deg, #ff3333, #cc0000);
+    border: none;
+    border-radius: 50px;
+    color: white;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    overflow: hidden;
+    box-shadow: 
+      0 8px 30px rgba(255, 0, 0, 0.3),
+      0 4px 15px rgba(255, 0, 0, 0.2),
+      inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    animation: pulse 2s infinite;
+  }
+  
+  .start-button:hover {
+    transform: translateY(-4px);
+    background: linear-gradient(145deg, #ff4444, #dd0000);
+    box-shadow: 
+      0 12px 40px rgba(255, 0, 0, 0.4),
+      0 6px 20px rgba(255, 0, 0, 0.3),
+      inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  }
+  
+  .start-button:active {
+    transform: translateY(-1px);
+    background: linear-gradient(145deg, #cc0000, #aa0000);
+    box-shadow: 
+      0 4px 20px rgba(255, 0, 0, 0.2),
+      0 2px 10px rgba(255, 0, 0, 0.15),
+      inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  }
+  
+  /* Sizes */
+  .start-button-large {
+    padding: 24px 60px;
+    font-size: 1.8rem;
+    min-width: 250px;
+  }
+  
+  .start-button-medium {
+    padding: 18px 45px;
+    font-size: 1.4rem;
+    min-width: 200px;
+  }
+  
+  .start-button-small {
+    padding: 12px 30px;
+    font-size: 1rem;
+    min-width: 150px;
+  }
+  
+  /* Variants */
+  .start-button-primary {
+    background: linear-gradient(145deg, #ff3333, #cc0000);
+  }
+  
+  .start-button-secondary {
+    background: linear-gradient(145deg, #ff6b6b, #ff4757);
+  }
+  
+  .start-button-outline {
+    background: transparent;
+    border: 3px solid #ff3333;
+    color: #ff3333;
+    box-shadow: 0 4px 15px rgba(255, 0, 0, 0.2);
+  }
+  
+  .start-button-outline:hover {
+    background: rgba(255, 0, 0, 0.1);
+  }
+  
+  /* Button text */
+  .button-text {
+    position: relative;
+    z-index: 2;
+    display: block;
+    transition: transform 0.3s ease;
+  }
+  
+  .start-button:hover .button-text {
+    transform: scale(1.05);
+  }
+  
+  /* Glow effect */
+  .button-glow {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 0;
+    height: 0;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.4) 0%, transparent 70%);
+    transition: width 0.3s ease, height 0.3s ease;
+  }
+  
+  .start-button:hover .button-glow {
+    width: 300px;
+    height: 300px;
+  }
+  
+  /* Pulse animation */
+  @keyframes pulse {
+    0%, 100% {
+      box-shadow: 
+        0 8px 30px rgba(255, 0, 0, 0.3),
+        0 4px 15px rgba(255, 0, 0, 0.2),
+        inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    }
+    50% {
+      box-shadow: 
+        0 8px 40px rgba(255, 0, 0, 0.4),
+        0 4px 20px rgba(255, 0, 0, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.3);
+    }
+  }
+  
+  /* Ripple effect */
+  .start-button::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.3);
+    transform: translate(-50%, -50%);
+    transition: width 0.6s ease, height 0.6s ease;
+  }
+  
+  .start-button:active::after {
+    width: 200px;
+    height: 200px;
+    opacity: 0;
+  }
+  
+  /* Focus state */
+  .start-button:focus {
+    outline: none;
+    box-shadow: 
+      0 0 0 4px rgba(255, 0, 0, 0.2),
+      0 8px 30px rgba(255, 0, 0, 0.3);
+  }
+  
+  /* Disabled state */
+  .start-button:disabled {
+    background: linear-gradient(145deg, #666, #555);
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+    animation: none;
+  }
+  
+  .start-button:disabled:hover {
+    transform: none;
+    box-shadow: none;
+  }
