@@ -1,23 +1,252 @@
 import { Canvas, useFrame } from '@react-three/fiber'
-import { PointerLockControls, useGLTF, Environment } from '@react-three/drei'
+import { PointerLockControls, useGLTF, Environment, Text } from '@react-three/drei'
 import { Physics, RigidBody, useRapier, CapsuleCollider } from '@react-three/rapier'
 import { useRef, useEffect, useState, useMemo } from 'react'
 import * as THREE from 'three'
+import useChatbot from './hooks/useChatbot'
+import { ChatUI } from './components/startpage/ChatUI.jsx'
 
-// --- SNOWFLAKE TRANSITION COMPONENT (Using your image) ---
+// --- SANTA CHARACTER COMPONENT ---
+function SantaCharacter({ position = [60, -0.3, 38], rotation = [0, 103, 0], scale = 1 }) {
+  const { scene } = useGLTF('models/Santa.glb')
+  
+  useEffect(() => {
+    if (scene) {
+      scene.traverse((child) => {
+        if (child.isMesh) {
+          child.castShadow = true
+          child.receiveShadow = true
+          if (child.material) {
+            child.material.metalness = 0.1
+            child.material.roughness = 0.8
+          }
+        }
+      })
+    }
+  }, [scene])
+  
+  return (
+    <group position={position} rotation={rotation} scale={scale}>
+      <primitive object={scene} />
+    </group>
+  )
+}
+
+// --- PLAYER BODY MESH ---
+function PlayerBody() {
+  return (
+    <group>
+      <mesh position={[0, 0, 0]}>
+        <capsuleGeometry args={[0.5, 1.5, 8, 16]} />
+        <meshStandardMaterial 
+          color="#4488ff" 
+          opacity={1}
+          metalness={0.3}
+          roughness={0.5}
+        />
+      </mesh>
+      
+      <mesh position={[0, 1.5, 0]}>
+        <sphereGeometry args={[0.35, 16, 16]} />
+        <meshStandardMaterial 
+          color="#ffcc88" 
+          metalness={0.2}
+          roughness={0.6}
+        />
+      </mesh>
+      
+      <mesh position={[0.12, 1.5, 0.28]}>
+        <sphereGeometry args={[0.08, 8, 8]} />
+        <meshStandardMaterial color="#222222" />
+      </mesh>
+      <mesh position={[-0.12, 1.5, 0.28]}>
+        <sphereGeometry args={[0.08, 8, 8]} />
+        <meshStandardMaterial color="#222222" />
+      </mesh>
+    </group>
+  )
+}
+
+// --- PLAYER COMPONENT WITH PROXIMITY DETECTION ---
+function Player({ onNearSanta, onInteract }) {
+  const playerRef = useRef()
+  const bodyRef = useRef()
+  const { rapier, world } = useRapier()
+  
+  const moveDirection = new THREE.Vector3()
+  const frontVector = new THREE.Vector3()
+  const sideVector = new THREE.Vector3()
+  
+  const keys = useRef({})
+  const isGrounded = useRef(false)
+  const jumpRequested = useRef(false)
+  const [thirdPerson, setThirdPerson] = useState(false)
+  const playerPosition = useRef(new THREE.Vector3(10, 6, 0))
+  const santaPosition = new THREE.Vector3(60, -0.3, 38)
+  const [isNearSanta, setIsNearSanta] = useState(false)
+
+  useEffect(() => {
+    const down = (e) => {
+      keys.current[e.code] = true
+      if (e.code === 'Space') jumpRequested.current = true
+      if (e.code === 'KeyV') setThirdPerson(prev => !prev)
+      if (e.code === 'KeyE' && isNearSanta) {
+        onInteract?.()
+      }
+    }
+    const up = (e) => {
+      keys.current[e.code] = false
+      if (e.code === 'Space') jumpRequested.current = false
+    }
+    window.addEventListener('keydown', down)
+    window.addEventListener('keyup', up)
+    return () => {
+      window.removeEventListener('keydown', down)
+      window.removeEventListener('keyup', up)
+    }
+  }, [isNearSanta, onInteract])
+
+  useFrame((state) => {
+    if (!playerRef.current) return
+
+    const position = playerRef.current.translation()
+    playerPosition.current.set(position.x, position.y, position.z)
+    
+    // Check distance to Santa
+    const distance = playerPosition.current.distanceTo(santaPosition)
+    const near = distance < 15 // 15 units radius
+    
+    if (near && !isNearSanta) {
+      setIsNearSanta(true)
+      onNearSanta?.(true)
+    } else if (!near && isNearSanta) {
+      setIsNearSanta(false)
+      onNearSanta?.(false)
+    }
+
+    const rayOrigin = { x: position.x, y: position.y - 1.25, z: position.z }
+    const ray = new rapier.Ray(rayOrigin, { x: 0, y: -1, z: 0 })
+    const hit = world.castRay(ray, 0.5, true, null, null, playerRef.current)
+    isGrounded.current = !!hit
+
+    if (jumpRequested.current && isGrounded.current) {
+       playerRef.current.setLinvel({ 
+        x: playerRef.current.linvel().x, 
+        y: 8, 
+        z: playerRef.current.linvel().z 
+      }, true)
+      jumpRequested.current = false
+    }
+
+    state.camera.getWorldDirection(frontVector)
+    frontVector.y = 0 
+    frontVector.normalize() 
+    sideVector.copy(frontVector).cross(state.camera.up).normalize()
+
+    moveDirection.set(0, 0, 0)
+
+    if (keys.current.KeyW) moveDirection.add(frontVector)
+    if (keys.current.KeyS) moveDirection.sub(frontVector)
+    if (keys.current.KeyD) moveDirection.add(sideVector)
+    if (keys.current.KeyA) moveDirection.sub(sideVector)
+
+    if (moveDirection.length() > 0) moveDirection.normalize()
+
+    const speed = keys.current.ShiftLeft ? 12 : 8
+    const currentVel = playerRef.current.linvel()
+    
+    playerRef.current.setLinvel(
+      {
+        x: moveDirection.x * speed,
+        y: currentVel.y, 
+        z: moveDirection.z * speed,
+      },
+      true
+    )
+    
+    const playerPos = playerRef.current.translation()
+    
+    if (thirdPerson) {
+      const cameraOffset = new THREE.Vector3()
+      state.camera.getWorldDirection(cameraOffset)
+      cameraOffset.multiplyScalar(-5)
+      cameraOffset.y = 3
+      
+      state.camera.position.set(
+        playerPos.x + cameraOffset.x,
+        playerPos.y + cameraOffset.y,
+        playerPos.z + cameraOffset.z
+      )
+      state.camera.lookAt(playerPos.x, playerPos.y + 1, playerPos.z)
+    } else {
+      state.camera.position.set(playerPos.x, playerPos.y + 1.0, playerPos.z)
+    }
+
+    if (bodyRef.current && moveDirection.length() > 0) {
+      const angle = Math.atan2(moveDirection.x, moveDirection.z)
+      bodyRef.current.rotation.y = angle
+    }
+  })
+
+  return (
+    <RigidBody
+      ref={playerRef}
+      colliders={false}
+      mass={1}
+      position={[10, 6, 0]}
+      enabledRotations={[false, false, false]}
+      lockRotations
+      friction={0}
+      ccd={true}
+    >
+      <CapsuleCollider args={[0.75, 0.5]} />
+      <group ref={bodyRef}>
+        <PlayerBody />
+      </group>
+    </RigidBody>
+  )
+}
+
+// --- INTERACTION UI COMPONENT ---
+function InteractionUI({ show, message = "Press E to talk to Santa" }) {
+  if (!show) return null
+  
+  return (
+    <div style={{
+      position: 'fixed',
+      top: '50%',
+      left: '50%',
+      transform: 'translate(-50%, -50%)',
+      background: 'rgba(0, 0, 0, 0.8)',
+      color: 'white',
+      padding: '15px 30px',
+      borderRadius: '10px',
+      border: '2px solid #d32f2f',
+      zIndex: 999,
+      fontFamily: 'monospace',
+      fontSize: '18px',
+      textAlign: 'center',
+      backdropFilter: 'blur(5px)',
+      boxShadow: '0 0 20px rgba(211, 47, 47, 0.5)'
+    }}>
+      {message}
+    </div>
+  )
+}
+
+// --- SNOWFLAKE TRANSITION COMPONENT ---
 function SnowflakeTransition({ onComplete, snowflakeImageUrl = '/flakesanthisim-removebg-preview.png' }) {
   const [snowflakes, setSnowflakes] = useState([])
   const [opacity, setOpacity] = useState(1)
   const startTimeRef = useRef(Date.now())
   
-  // Initialize snowflakes once
   useEffect(() => {
     const initialFlakes = []
     for (let i = 0; i < 80; i++) {
       initialFlakes.push({
         id: i,
         startX: Math.random() * 100,
-        startY: -5 - Math.random() * 30, // Start above the screen
+        startY: -5 - Math.random() * 30,
         size: 40 + Math.random() * 60,
         speed: 80 + Math.random() * 120,
         startRotation: Math.random() * 360,
@@ -32,7 +261,6 @@ function SnowflakeTransition({ onComplete, snowflakeImageUrl = '/flakesanthisim-
     startTimeRef.current = Date.now()
   }, [])
   
-  // Animation using requestAnimationFrame
   useEffect(() => {
     if (snowflakes.length === 0) return
     
@@ -41,7 +269,6 @@ function SnowflakeTransition({ onComplete, snowflakeImageUrl = '/flakesanthisim-
     const animate = () => {
       const elapsed = Date.now() - startTimeRef.current
       
-      // Update snowflake positions
       setSnowflakes(prev => prev.map(flake => {
         const activeTime = Math.max(0, elapsed - flake.delay)
         const currentY = flake.startY + (flake.speed * activeTime) / 1000
@@ -56,12 +283,10 @@ function SnowflakeTransition({ onComplete, snowflakeImageUrl = '/flakesanthisim-
         }
       }))
       
-      // Start fading out after 2.5 seconds
       if (elapsed > 2500) {
         setOpacity(Math.max(0, 1 - (elapsed - 2500) / 800))
       }
       
-      // Complete transition after 3.3 seconds
       if (elapsed > 3300) {
         onComplete()
         return
@@ -110,47 +335,11 @@ function SnowflakeTransition({ onComplete, snowflakeImageUrl = '/flakesanthisim-
             willChange: 'transform, top, left'
           }}
           onError={(e) => {
-            // Fallback to SVG if image doesn't load
             e.target.style.display = 'none'
           }}
         />
       ))}
       
-      {/* SVG Fallback snowflakes (in case image doesn't load) */}
-      {snowflakes.map(flake => (
-        <div
-          key={`svg-${flake.id}`}
-          style={{
-            position: 'absolute',
-            left: `${flake.currentX ?? flake.startX}%`,
-            top: `${flake.currentY ?? flake.startY}%`,
-            width: flake.size,
-            height: flake.size,
-            transform: `translate(-50%, -50%) rotate(${flake.currentRotation ?? flake.startRotation}deg)`,
-            opacity: flake.flakeOpacity,
-            pointerEvents: 'none',
-            willChange: 'transform, top, left'
-          }}
-        >
-          <svg viewBox="0 0 100 100" style={{ width: '100%', height: '100%' }}>
-            <g fill="white" stroke="#b3e5fc" strokeWidth="0.5" opacity="0.9">
-              <rect x="48" y="5" width="4" height="90" rx="2" />
-              <rect x="5" y="48" width="90" height="4" rx="2" />
-              <rect x="48" y="5" width="4" height="90" rx="2" transform="rotate(60 50 50)" />
-              <rect x="48" y="5" width="4" height="90" rx="2" transform="rotate(-60 50 50)" />
-              <circle cx="50" cy="50" r="8" />
-              {[0, 60, 120, 180, 240, 300].map((angle, i) => (
-                <g key={i} transform={`rotate(${angle} 50 50)`}>
-                  <circle cx="50" cy="20" r="4" />
-                  <circle cx="50" cy="80" r="4" />
-                </g>
-              ))}
-            </g>
-          </svg>
-        </div>
-      ))}
-      
-      {/* Title that appears during snowfall */}
       <div style={{
         position: 'absolute',
         top: '50%',
@@ -326,162 +515,8 @@ function Snow({ count = 3000 }) {
   )
 }
 
-// --- PLAYER BODY MESH ---
-function PlayerBody() {
-  return (
-    <group>
-      <mesh position={[0, 0, 0]}>
-        <capsuleGeometry args={[0.5, 1.5, 8, 16]} />
-        <meshStandardMaterial 
-          color="#4488ff" 
-          opacity={1}
-          metalness={0.3}
-          roughness={0.5}
-        />
-      </mesh>
-      
-      <mesh position={[0, 1.5, 0]}>
-        <sphereGeometry args={[0.35, 16, 16]} />
-        <meshStandardMaterial 
-          color="#ffcc88" 
-          metalness={0.2}
-          roughness={0.6}
-        />
-      </mesh>
-      
-      <mesh position={[0.12, 1.5, 0.28]}>
-        <sphereGeometry args={[0.08, 8, 8]} />
-        <meshStandardMaterial color="#222222" />
-      </mesh>
-      <mesh position={[-0.12, 1.5, 0.28]}>
-        <sphereGeometry args={[0.08, 8, 8]} />
-        <meshStandardMaterial color="#222222" />
-      </mesh>
-    </group>
-  )
-}
-
-function Player() {
-  const playerRef = useRef()
-  const bodyRef = useRef()
-  const { rapier, world } = useRapier()
-  
-  const moveDirection = new THREE.Vector3()
-  const frontVector = new THREE.Vector3()
-  const sideVector = new THREE.Vector3()
-  
-  const keys = useRef({})
-  const isGrounded = useRef(false)
-  const jumpRequested = useRef(false)
-  const [thirdPerson, setThirdPerson] = useState(false)
-
-  useEffect(() => {
-    const down = (e) => {
-      keys.current[e.code] = true
-      if (e.code === 'Space') jumpRequested.current = true
-      if (e.code === 'KeyV') setThirdPerson(prev => !prev)
-    }
-    const up = (e) => {
-      keys.current[e.code] = false
-      if (e.code === 'Space') jumpRequested.current = false
-    }
-    window.addEventListener('keydown', down)
-    window.addEventListener('keyup', up)
-    return () => {
-      window.removeEventListener('keydown', down)
-      window.removeEventListener('keyup', up)
-    }
-  }, [])
-
-  useFrame((state) => {
-    if (!playerRef.current) return
-
-    const position = playerRef.current.translation()
-    const rayOrigin = { x: position.x, y: position.y - 1.25, z: position.z }
-    const ray = new rapier.Ray(rayOrigin, { x: 0, y: -1, z: 0 })
-    const hit = world.castRay(ray, 0.5, true, null, null, playerRef.current)
-    isGrounded.current = !!hit
-
-    if (jumpRequested.current && isGrounded.current) {
-       playerRef.current.setLinvel({ 
-        x: playerRef.current.linvel().x, 
-        y: 8, 
-        z: playerRef.current.linvel().z 
-      }, true)
-      jumpRequested.current = false
-    }
-
-    state.camera.getWorldDirection(frontVector)
-    frontVector.y = 0 
-    frontVector.normalize() 
-    sideVector.copy(frontVector).cross(state.camera.up).normalize()
-
-    moveDirection.set(0, 0, 0)
-
-    if (keys.current.KeyW) moveDirection.add(frontVector)
-    if (keys.current.KeyS) moveDirection.sub(frontVector)
-    if (keys.current.KeyD) moveDirection.add(sideVector)
-    if (keys.current.KeyA) moveDirection.sub(sideVector)
-
-    if (moveDirection.length() > 0) moveDirection.normalize()
-
-    const speed = keys.current.ShiftLeft ? 12 : 8
-    const currentVel = playerRef.current.linvel()
-    
-    playerRef.current.setLinvel(
-      {
-        x: moveDirection.x * speed,
-        y: currentVel.y, 
-        z: moveDirection.z * speed,
-      },
-      true
-    )
-    
-    const playerPos = playerRef.current.translation()
-    
-    if (thirdPerson) {
-      const cameraOffset = new THREE.Vector3()
-      state.camera.getWorldDirection(cameraOffset)
-      cameraOffset.multiplyScalar(-5)
-      cameraOffset.y = 3
-      
-      state.camera.position.set(
-        playerPos.x + cameraOffset.x,
-        playerPos.y + cameraOffset.y,
-        playerPos.z + cameraOffset.z
-      )
-      state.camera.lookAt(playerPos.x, playerPos.y + 1, playerPos.z)
-    } else {
-      state.camera.position.set(playerPos.x, playerPos.y + 1.0, playerPos.z)
-    }
-
-    if (bodyRef.current && moveDirection.length() > 0) {
-      const angle = Math.atan2(moveDirection.x, moveDirection.z)
-      bodyRef.current.rotation.y = angle
-    }
-  })
-
-  return (
-    <RigidBody
-      ref={playerRef}
-      colliders={false}
-      mass={1}
-      position={[10, 6, 0]}
-      enabledRotations={[false, false, false]}
-      lockRotations
-      friction={0}
-      ccd={true}
-    >
-      <CapsuleCollider args={[0.75, 0.5]} />
-      <group ref={bodyRef}>
-        <PlayerBody />
-      </group>
-    </RigidBody>
-  )
-}
-
 function Model() {
-  const { scene, error } = useGLTF('/models/vilage.glb', undefined, undefined, (e) => console.error(e))
+  const { scene, error } = useGLTF('/models/villageFinal.glb', undefined, undefined, (e) => console.error(e))
   
   useEffect(() => {
     if (scene) {
@@ -507,13 +542,18 @@ function Model() {
   return <primitive object={scene} />
 }
 
-useGLTF.preload('/models/vilage.glb')
+useGLTF.preload('/models/villageFinal.glb')
 
 export default function App() {
   const [loaded, setLoaded] = useState(false)
   const [gameStarted, setGameStarted] = useState(false)
   const [showTransition, setShowTransition] = useState(false)
   const [showGame, setShowGame] = useState(false)
+  const [isNearSanta, setIsNearSanta] = useState(false)
+  const [showChat, setShowChat] = useState(false)
+  
+  // Initialize chatbot
+  const chatbot = useChatbot()
   
   const handleStartGame = () => {
     setGameStarted(true)
@@ -529,6 +569,22 @@ export default function App() {
     setGameStarted(false)
     setShowTransition(false)
     setShowGame(false)
+    setShowChat(false)
+    setIsNearSanta(false)
+  }
+  
+  const handleNearSanta = (near) => {
+    setIsNearSanta(near)
+  }
+  
+  const handleInteract = () => {
+    if (isNearSanta) {
+      setShowChat(true)
+    }
+  }
+  
+  const handleCloseChat = () => {
+    setShowChat(false)
   }
   
   return (
@@ -536,7 +592,7 @@ export default function App() {
       {/* Start Page - Only show if game hasn't started */}
       {!gameStarted && <StartPage onStart={handleStartGame} />}
       
-      {/* Snowflake Transition Animation - Falls immediately when START is pressed */}
+      {/* Snowflake Transition Animation */}
       {showTransition && (
         <SnowflakeTransition 
           onComplete={handleTransitionComplete} 
@@ -577,7 +633,13 @@ export default function App() {
           <RigidBody type="fixed" colliders="trimesh">
             <Model />
           </RigidBody>
-          <Player />
+          
+          <SantaCharacter />
+          
+          <Player 
+            onNearSanta={handleNearSanta}
+            onInteract={handleInteract}
+          />
         </Physics>
         
         <PointerLockControls />
@@ -589,6 +651,19 @@ export default function App() {
           </mesh>
         )}
       </Canvas>
+      
+      {/* Interaction UI */}
+      <InteractionUI 
+        show={isNearSanta && !showChat} 
+        message="Press E to talk to Santa"
+      />
+      
+      {/* Chat UI */}
+      <ChatUI 
+        isOpen={showChat}
+        onClose={handleCloseChat}
+        chatbot={chatbot}
+      />
       
       {/* Controls Info */}
       {showGame && (
@@ -604,11 +679,8 @@ export default function App() {
           fontSize: '14px',
           lineHeight: '1.6'
         }}>
-          <div><b>Controls:</b></div>
-          <div>WASD - Move</div>
-          <div>SPACE - Jump</div>
-          <div>SHIFT - Run</div>
-          <div>V - Toggle View (1st/3rd Person)</div>
+          <div><b>Find Santa and help him find his glasses!</b></div>
+          
         </div>
       )}
       
