@@ -4,7 +4,7 @@ import { Physics, RigidBody, useRapier, CapsuleCollider } from '@react-three/rap
 import { useRef, useEffect, useState, useMemo } from 'react'
 import * as THREE from 'three'
 import useChatbot from './hooks/useChatbot'
-import { ChatUI } from './components/startpage/ChatUI.jsx'
+import { ChatUI } from './components/startpage/chatUI'
 
 // --- SANTA CHARACTER COMPONENT ---
 function SantaCharacter({ position = [60, -0.3, 38], rotation = [0, 103, 0], scale = 1 }) {
