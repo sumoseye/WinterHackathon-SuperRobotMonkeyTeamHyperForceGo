@@ -68,7 +68,14 @@ function PlayerBody() {
 }
 
 // --- PLAYER COMPONENT WITH PROXIMITY DETECTION ---
-function Player({ onNearSanta, onInteract }) {
+function Player({ 
+  onNearSanta, 
+  onInteract, 
+  showChat = false, 
+  onNearGlasses, 
+  onCollectGlasses,
+  glassesPosition = [55, 0.5, 35] // Default glasses position - adjust this!
+}) {
   const playerRef = useRef()
   const bodyRef = useRef()
   const { rapier, world } = useRapier()
@@ -83,28 +90,43 @@ function Player({ onNearSanta, onInteract }) {
   const [thirdPerson, setThirdPerson] = useState(false)
   const playerPosition = useRef(new THREE.Vector3(10, 6, 0))
   const santaPosition = new THREE.Vector3(60, -0.3, 38)
+  const glassesPos = new THREE.Vector3(glassesPosition[0], glassesPosition[1], glassesPosition[2])
   const [isNearSanta, setIsNearSanta] = useState(false)
+  const [isNearGlasses, setIsNearGlasses] = useState(false)
 
   useEffect(() => {
     const down = (e) => {
+      // Don't capture keys if chat is open
+      if (showChat) return;
+      
       keys.current[e.code] = true
       if (e.code === 'Space') jumpRequested.current = true
       if (e.code === 'KeyV') setThirdPerson(prev => !prev)
-      if (e.code === 'KeyE' && isNearSanta) {
-        onInteract?.()
+      
+      // E key interactions
+      if (e.code === 'KeyE') {
+        if (isNearSanta) {
+          onInteract?.()
+        } else if (isNearGlasses) {
+          onCollectGlasses?.()
+        }
       }
     }
+    
     const up = (e) => {
+      if (showChat) return;
+      
       keys.current[e.code] = false
       if (e.code === 'Space') jumpRequested.current = false
     }
+    
     window.addEventListener('keydown', down)
     window.addEventListener('keyup', up)
     return () => {
       window.removeEventListener('keydown', down)
       window.removeEventListener('keyup', up)
     }
-  }, [isNearSanta, onInteract])
+  }, [isNearSanta, isNearGlasses, onInteract, onCollectGlasses, showChat])
 
   useFrame((state) => {
     if (!playerRef.current) return
@@ -113,15 +135,27 @@ function Player({ onNearSanta, onInteract }) {
     playerPosition.current.set(position.x, position.y, position.z)
     
     // Check distance to Santa
-    const distance = playerPosition.current.distanceTo(santaPosition)
-    const near = distance < 15 // 15 units radius
+    const distanceToSanta = playerPosition.current.distanceTo(santaPosition)
+    const nearSanta = distanceToSanta < 15
     
-    if (near && !isNearSanta) {
+    if (nearSanta && !isNearSanta) {
       setIsNearSanta(true)
       onNearSanta?.(true)
-    } else if (!near && isNearSanta) {
+    } else if (!nearSanta && isNearSanta) {
       setIsNearSanta(false)
       onNearSanta?.(false)
+    }
+    
+    // Check distance to Glasses
+    const distanceToGlasses = playerPosition.current.distanceTo(glassesPos)
+    const nearGlasses = distanceToGlasses < 5 // 5 units radius for glasses
+    
+    if (nearGlasses && !isNearGlasses) {
+      setIsNearGlasses(true)
+      onNearGlasses?.(true)
+    } else if (!nearGlasses && isNearGlasses) {
+      setIsNearGlasses(false)
+      onNearGlasses?.(false)
     }
 
     const rayOrigin = { x: position.x, y: position.y - 1.25, z: position.z }
@@ -234,6 +268,42 @@ function InteractionUI({ show, message = "Press E to talk to Santa" }) {
   )
 }
 
+// --- ITEM FOUND NOTIFICATION ---
+function ItemFoundNotification({ show, itemName }) {
+  if (!show) return null
+  
+  return (
+    <div style={{
+      position: 'fixed',
+      top: '30%',
+      left: '50%',
+      transform: 'translate(-50%, -50%)',
+      background: 'linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%)',
+      color: 'white',
+      padding: '20px 40px',
+      borderRadius: '15px',
+      border: '3px solid #81C784',
+      zIndex: 1001,
+      fontFamily: 'monospace',
+      fontSize: '24px',
+      textAlign: 'center',
+      boxShadow: '0 0 30px rgba(76, 175, 80, 0.7)',
+      animation: 'popIn 0.5s ease-out'
+    }}>
+      <div style={{ fontSize: '40px', marginBottom: '10px' }}>🎉</div>
+      <div>You found Santa's {itemName}!</div>
+      <div style={{ fontSize: '16px', marginTop: '10px' }}>Talk to Santa to let him know!</div>
+      <style>{`
+        @keyframes popIn {
+          0% { transform: translate(-50%, -50%) scale(0); opacity: 0; }
+          50% { transform: translate(-50%, -50%) scale(1.1); }
+          100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+        }
+      `}</style>
+    </div>
+  )
+}
+
 // --- SNOWFLAKE TRANSITION COMPONENT ---
 function SnowflakeTransition({ onComplete, snowflakeImageUrl = '/flakesanthisim-removebg-preview.png' }) {
   const [snowflakes, setSnowflakes] = useState([])
@@ -316,7 +386,6 @@ function SnowflakeTransition({ onComplete, snowflakeImageUrl = '/flakesanthisim-
       transition: 'opacity 0.4s ease-out',
       pointerEvents: opacity > 0 ? 'all' : 'none'
     }}>
-      {/* Snowflakes */}
       {snowflakes.map(flake => (
         <img
           key={flake.id}
@@ -515,7 +584,8 @@ function Snow({ count = 3000 }) {
   )
 }
 
-function Model() {
+// --- MODEL COMPONENT ---
+function Model({ glassesVisible }) {
   const { scene, error } = useGLTF('/models/villageFinal.glb', undefined, undefined, (e) => console.error(e))
   
   useEffect(() => {
@@ -533,10 +603,17 @@ function Model() {
           }
           child.castShadow = true
           child.receiveShadow = true
+          
+          // Check if this is the glasses object - adjust name based on your Blender model
+          const name = child.name.toLowerCase()
+          if (name.includes('glass') || name.includes('glasses') || name.includes('spectacle')) {
+            child.visible = glassesVisible
+            console.log('Found glasses:', child.name, 'visible:', glassesVisible)
+          }
         }
       })
     }
-  }, [scene, error])
+  }, [scene, error, glassesVisible])
   
   if (error) return null
   return <primitive object={scene} />
@@ -544,13 +621,21 @@ function Model() {
 
 useGLTF.preload('/models/villageFinal.glb')
 
+// --- GLASSES POSITION CONSTANT ---
+// IMPORTANT: Change this to match where your glasses are in the Blender model!
+const GLASSES_POSITION = [55, 0.5, 35] // [X, Y, Z] - adjust these values!
+
 export default function App() {
   const [loaded, setLoaded] = useState(false)
   const [gameStarted, setGameStarted] = useState(false)
   const [showTransition, setShowTransition] = useState(false)
   const [showGame, setShowGame] = useState(false)
   const [isNearSanta, setIsNearSanta] = useState(false)
+  const [isNearGlasses, setIsNearGlasses] = useState(false)
   const [showChat, setShowChat] = useState(false)
+  const [glassesVisible, setGlassesVisible] = useState(true)
+  const [glassesCollected, setGlassesCollected] = useState(false)
+  const [showItemNotification, setShowItemNotification] = useState(false)
   
   // Initialize chatbot
   const chatbot = useChatbot()
@@ -571,10 +656,20 @@ export default function App() {
     setShowGame(false)
     setShowChat(false)
     setIsNearSanta(false)
+    setIsNearGlasses(false)
+    setGlassesVisible(true)
+    setGlassesCollected(false)
   }
   
   const handleNearSanta = (near) => {
     setIsNearSanta(near)
+  }
+  
+  const handleNearGlasses = (near) => {
+    // Only show near glasses if they haven't been collected
+    if (!glassesCollected) {
+      setIsNearGlasses(near)
+    }
   }
   
   const handleInteract = () => {
@@ -583,13 +678,45 @@ export default function App() {
     }
   }
   
+  const handleCollectGlasses = () => {
+    if (!glassesCollected) {
+      setGlassesVisible(false)
+      setGlassesCollected(true)
+      setIsNearGlasses(false)
+      setShowItemNotification(true)
+      
+      // Add to chatbot found items if available
+      if (chatbot.addFoundItem) {
+        chatbot.addFoundItem('glasses')
+      }
+      
+      // Hide notification after 3 seconds
+      setTimeout(() => {
+        setShowItemNotification(false)
+      }, 3000)
+    }
+  }
+  
   const handleCloseChat = () => {
     setShowChat(false)
   }
   
+  // Determine which interaction message to show
+  const getInteractionMessage = () => {
+    if (isNearSanta && !showChat) {
+      return "Press E to talk to Santa"
+    }
+    if (isNearGlasses && !glassesCollected) {
+      return "Press E to pick up Santa's glasses 🤓"
+    }
+    return null
+  }
+  
+  const interactionMessage = getInteractionMessage()
+  
   return (
     <div style={{ width: '100vw', height: '100vh', margin: 0, padding: 0, background: '#aaccff' }}>
-      {/* Start Page - Only show if game hasn't started */}
+      {/* Start Page */}
       {!gameStarted && <StartPage onStart={handleStartGame} />}
       
       {/* Snowflake Transition Animation */}
@@ -605,7 +732,7 @@ export default function App() {
         shadows
         camera={{ fov: 75 }}
         onPointerDown={(e) => {
-          if (showGame) {
+          if (showGame && !showChat) {
             e.target.requestPointerLock()
           }
         }}
@@ -631,14 +758,18 @@ export default function App() {
         
         <Physics gravity={[0, -15, 0]}>
           <RigidBody type="fixed" colliders="trimesh">
-            <Model />
+            <Model glassesVisible={glassesVisible} />
           </RigidBody>
           
           <SantaCharacter />
           
           <Player 
             onNearSanta={handleNearSanta}
+            onNearGlasses={handleNearGlasses}
             onInteract={handleInteract}
+            onCollectGlasses={handleCollectGlasses}
+            showChat={showChat}
+            glassesPosition={GLASSES_POSITION}
           />
         </Physics>
         
@@ -652,10 +783,16 @@ export default function App() {
         )}
       </Canvas>
       
-      {/* Interaction UI */}
+      {/* Interaction UI - Shows for both Santa and Glasses */}
       <InteractionUI 
-        show={isNearSanta && !showChat} 
-        message="Press E to talk to Santa"
+        show={!!interactionMessage && !showChat} 
+        message={interactionMessage}
+      />
+      
+      {/* Item Found Notification */}
+      <ItemFoundNotification 
+        show={showItemNotification}
+        itemName="glasses"
       />
       
       {/* Chat UI */}
@@ -679,8 +816,19 @@ export default function App() {
           fontSize: '14px',
           lineHeight: '1.6'
         }}>
-          <div><b>Find Santa and help him find his glasses!</b></div>
-          
+          <div><b>🎅 Help Santa find his glasses!</b></div>
+          <div style={{ marginTop: '10px' }}>
+            <div>WASD: Move</div>
+            <div>Space: Jump</div>
+            <div>Shift: Run</div>
+            <div>E: Interact</div>
+            <div>V: Toggle 3rd person</div>
+          </div>
+          <div style={{ marginTop: '10px', borderTop: '1px solid rgba(255,255,255,0.3)', paddingTop: '10px' }}>
+            <div style={{ color: glassesCollected ? '#4CAF50' : '#ff9800' }}>
+              🤓 Glasses: {glassesCollected ? '✅ Found!' : '🔍 Missing'}
+            </div>
+          </div>
         </div>
       )}
       
