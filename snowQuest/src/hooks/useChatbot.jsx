@@ -1,64 +1,72 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useMemo, useRef } from 'react';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const useChatbot = () => {
   const [messages, setMessages] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [status, setStatus] = useState('idle');
-
-  // Initialize SDK
-  const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
   
-  // FIXED MODEL NAME: "gemini-2.5-flash" is the stable identifier
-  const model = genAI.getGenerativeModel({ 
-    model: "gemini-flash-lite-latest", 
-    systemInstruction: "You are Santa Claus. Be jolly, warm, and helpful. Use 'Ho ho ho!' often."
-  });
+  // Use a ref to prevent accidental double-firing in StrictMode
+  const isProcessing = useRef(false);
+
+  // Initialize Client - Ensure this is just the string, not an object
+  const client = useMemo(() => {
+    const key = import.meta.env.VITE_GEMINI_API_KEY;
+    if (!key) return null;
+    return new GoogleGenerativeAI(key);
+  }, []);
 
   const sendMessage = useCallback(async (message) => {
-    if (!message.trim()) return;
+    const trimmedMessage = message.trim();
+    if (!trimmedMessage || !client || isProcessing.current) return;
 
+    isProcessing.current = true;
     setIsLoading(true);
     setStatus('loading');
-    setMessages(prev => [...prev, { role: 'user', content: message }]);
+    
+    // Add user message to UI
+    setMessages(prev => [...prev, { role: 'user', content: trimmedMessage }]);
 
-    const lowerMsg = message.toLowerCase().trim();
-    let responseText = null;
+    try {
+      // Using 'gemini-2.0-flash' (Current stable high-version for Free Tier)
+      // If this gives a 404, change it to 'gemini-1.5-flash'
+      const model = client.getGenerativeModel({ model: "gemini-flash-lite-latest" });
 
-    // --- 1. Hardcoded Logic (Fast & Free) ---
-    if (lowerMsg.includes('17 divided by 5')) {
-      responseText = "Ho ho ho! Let's check the math! 17 ÷ 5 = 3 with remainder 2! 🎄";
-    } else if (lowerMsg.includes('glasses')) {
-      responseText = "I have lost my glasses! They are black and usually sit right on my nose!";
-    }
+      const result = await model.generateContentStream(trimmedMessage);
+      
+      setMessages(prev => [...prev, { role: 'assistant', content: '' }]);
+      let accumulatedText = "";
 
-    // --- 2. Gemini 2.5 Flash API ---
-    if (!responseText) {
-      try {
-        const result = await model.generateContent(message);
-        responseText = result.response.text();
-      } catch (err) {
-        console.error("Gemini Error:", err);
+      for await (const chunk of result.stream) {
+        const chunkText = chunk.text();
+        accumulatedText += chunkText;
         
-        // Handle common API issues
-        if (err.message.includes('429')) {
-          responseText = "Ho ho ho! Too many children are talking to me! Try again in a minute.";
-        } else if (err.message.includes('404')) {
-          responseText = "Ho ho ho! It seems I can't find that model in my magic bag. Please check the model name!";
-        } else {
-          responseText = "Ho ho ho! The North Pole wifi is snowy. Can you repeat that?";
-        }
+        setMessages(prev => {
+          const newMessages = [...prev];
+          const lastIndex = newMessages.length - 1;
+          newMessages[lastIndex] = { ...newMessages[lastIndex], content: accumulatedText };
+          return newMessages;
+        });
       }
+
+      setStatus('playing');
+    } catch (err) {
+      console.error("Gemini Error:", err);
+      
+      let errorMsg = "Ho ho ho! The North Pole wifi is snowy.";
+      if (err.message?.includes('429')) {
+        errorMsg = "Quota Exceeded! Please wait 60 seconds or check for an infinite loop in your code.";
+      } else if (err.message?.includes('404')) {
+        errorMsg = "Model not found. Try switching to 'gemini-1.5-flash'.";
+      }
+
+      setMessages(prev => [...prev, { role: 'assistant', content: errorMsg }]);
+    } finally {
+      setIsLoading(false);
+      isProcessing.current = false;
+      setTimeout(() => setStatus('idle'), 5000);
     }
-
-    // Update UI with Santa's response
-    setMessages(prev => [...prev, { role: 'assistant', content: responseText }]);
-    setStatus('playing');
-    setIsLoading(false);
-
-    // Stop lip animation after approx speech time (60ms per char)
-    setTimeout(() => setStatus('idle'), Math.min(responseText.length * 60, 8000));
-  }, [model]);
+  }, [client]);
 
   return { messages, isLoading, status, sendMessage };
 };
